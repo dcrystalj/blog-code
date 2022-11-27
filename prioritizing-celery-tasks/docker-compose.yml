@@ -1,0 +1,55 @@
+---
+services:
+  app:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/celery/Dockerfile
+    command: sh -c "sleep 10 && python3 main.py"
+    volumes:
+      - ./:/app
+    depends_on:
+      - public-worker
+      - private-worker
+      - redis
+      - flower
+  public-worker:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/celery/Dockerfile
+    volumes:
+      - ./:/app
+    command: celery -A tasks.app worker -Q public -l INFO
+    depends_on:
+      - flower
+      - redis
+  private-worker:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/celery/Dockerfile
+    volumes:
+      - ./:/app
+    command: celery -A tasks.app worker -Q private -l INFO
+    healthcheck:
+      test: celery -A tasks.app status
+      timeout: 20s
+      retries: 10
+    depends_on:
+      - flower
+      - redis
+  flower:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/celery/Dockerfile
+    volumes:
+      - ./:/app
+    command: celery -A tasks.app flower --port=5656 -l INFO
+    ports:
+      - "5656:5656"
+    depends_on:
+      - redis
+    healthcheck:
+      test: [ "curl", "-f", "http://localhost:5656/healthcheck" ]
+      timeout: 20s
+      retries: 10
+  redis:
+    image: redis:7.0.5-bullseye
